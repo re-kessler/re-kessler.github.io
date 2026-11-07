@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modelos gratuitos de Excel e Power Query | Excel Sem Enrolação</title>
+<meta name="description" content="Uma planilha com fórmulas que acompanham a tabela, um checklist dos erros mais comuns do Power Query (mensagem, causa, correção) e três consultas M prontas. Gratuitos, sem cadastro.">
+
+<link rel="canonical" href="https://re-kessler.github.io/modelos/">
+<link rel="alternate" type="application/atom+xml" href="/feed.xml">
+<link rel="stylesheet" href="/estilo.css">
+
+</head>
+<body>
+<header><a class="nome" href="/">Excel Sem Enrolação</a>
+<nav><a href="/">Artigos</a><a href="/livro/">O livro</a><a href="/sobre/">Sobre</a></nav></header>
+<main>
+<h1>Modelos gratuitos de Excel e Power Query</h1>
+<p>Arquivos para baixar, sem cadastro. Todos saem de coisas que foram executadas antes de serem escritas aqui.</p>
+<h2>Planilha: fórmulas que acompanham a tabela</h2>
+<p>Uma pasta de trabalho com as vendas de janeiro de uma mercearia fictícia, três Tabelas (<code>tbVendas</code>, <code>tbEstoque</code>, <code>tbPrecos</code>) e uma aba <code>Formulas</code> com seis contas: faturamento por loja, por loja e categoria, contagem de vendas, total, margem e um controle que conta produtos fora da tabela de preços. As fórmulas apontam para nomes de colunas, como <code>tbVendas[Valor]</code>, e não para endereços como <code>F2:F120</code>. Quando a Tabela ganha uma linha, o resultado muda sem que ninguém edite a fórmula.</p>
+<ul><li><a href="/modelos/modelo-formulas-mercadinho.xlsx">Baixar a planilha (.xlsx)</a></li></ul>
+<p>Usa só funções que existem desde o Excel 2010 (<code>SOMASES</code>, <code>CONT.SES</code>, <code>SOMARPRODUTO</code>, <code>MÉDIASE</code>), então não exige o Microsoft 365. Ao lado de cada resultado há uma coluna <code>Esperado</code>, calculada fora do Excel com os mesmos dados, para você conferir se a planilha abriu certa no seu computador.</p>
+<h2>Checklist: erros do Power Query</h2>
+<p>A mesma lista em PDF, para imprimir ou deixar ao lado do teclado:</p>
+<ul><li><a href="/modelos/checklist-erros-power-query.pdf">Baixar o checklist (.pdf)</a></li></ul>
+<h3>1. <code>Expression.Error: A coluna &#x27;Valor&#x27; da tabela não foi encontrada.</code></h3>
+<ul><li><strong>Causa:</strong> uma etapa cita uma coluna que a tabela não tem naquele momento. Costuma ser o cabeçalho renomeado ou apagado no arquivo de origem; também acontece quando uma etapa anterior da própria consulta removeu ou renomeou a coluna.</li><li><strong>O que a mensagem não diz:</strong> qual arquivo veio errado, e como a coluna se chama agora.</li><li><strong>Correção:</strong> logo depois da leitura, conferir as colunas esperadas com <code>Table.HasColumns</code> e parar com um erro escrito por você que aponte o arquivo e as colunas que chegaram. Se o nome novo for definitivo, <code>Table.RenameColumns</code> com <code>MissingField.Ignore</code> como terceiro argumento aprende o nome novo sem quebrar nos arquivos antigos.</li><li><strong>Não cobre:</strong> <code>Table.HasColumns</code> confere nomes e nada mais; uma coluna <code>Valor</code> cheia de texto passa e falha na etapa seguinte. E a lista de colunas esperadas fica parada no código: coluna nova que a consulta passar a usar precisa entrar nela.</li><li>Passo a passo com o código completo: <a href="/artigos/power-query-expression-error-coluna-nao-encontrada/">o artigo sobre este erro</a>.</li></ul>
+<h3>2. <code>DataFormat.Error: Não conseguimos converter em Número</code></h3>
+<ul><li><strong>Causa:</strong> a conversão de tipo encontrou, numa célula, um texto que não é número (no teste, <code>a conferir</code> digitado no lugar do valor). O erro fica só nessa célula, e a consulta continua.</li><li><strong>O estrago:</strong> qualquer etapa que use a coluna inteira, como uma soma, devolve o mesmo erro por causa de uma única célula.</li><li><strong>Correção:</strong> guardar o texto original numa coluna à parte antes de converter; depois separar as linhas boas (<code>Table.RemoveRowsWithErrors</code>) das rejeitadas (<code>Table.SelectRowsWithErrors</code>) em duas consultas, e carregar as rejeitadas numa planilha ao lado do relatório. Conferir que boas mais rejeitadas dão o total de linhas.</li><li><strong>Não cobre:</strong> <code>Table.RemoveRowsWithErrors</code> sozinha apaga a linha da conta sem deixar rastro; só vale com a consulta de rejeitadas ao lado, e alguém precisa olhar para ela. As duas funções vigiam só as colunas que você listar.</li><li>Passo a passo com o código completo: <a href="/artigos/power-query-dataformat-error-nao-conseguimos-converter-em-numero/">o artigo sobre este erro</a>.</li></ul>
+<h3>3. Número que converte sem erro e vem errado</h3>
+<ul><li><strong>Causa:</strong> a cultura da conversão. No teste, o texto <code>8,50</code> virou 8,5 com <code>&quot;pt-BR&quot;</code> e 850 com <code>&quot;en-US&quot;</code>; <code>24,90</code> virou 2490. Em inglês a vírgula é separador de milhar, e o Power Query aceita sem avisar.</li><li><strong>Por que é pior que o erro:</strong> um erro aparece na prévia. Um valor cem vezes maior, não.</li><li><strong>Correção:</strong> escrever a cultura no terceiro argumento de <code>Table.TransformColumnTypes</code> (<code>&quot;pt-BR&quot;</code>), para o resultado não depender do computador em que a consulta é atualizada.</li><li>Detalhes e a tabela de comparação: <a href="/artigos/power-query-dataformat-error-nao-conseguimos-converter-em-numero/">o mesmo artigo</a>.</li></ul>
+<h3>Antes de atualizar o relatório</h3>
+<ol><li>Alguma coluna esperada pode ter mudado de nome? A consulta confere isso e para com o nome do arquivo?</li><li>Alguma coluna numérica pode ter chegado como texto? Existe uma consulta de rejeitadas, e alguém abre a planilha dela?</li><li>A cultura está escrita na conversão, ou depende do computador?</li><li>A soma das linhas boas com as rejeitadas fecha com o total do arquivo de origem?</li></ol>
+<h2>Consultas M prontas</h2>
+<p>Texto para colar em Dados &gt; Obter Dados &gt; Consulta em Branco &gt; Editor Avançado. Cada arquivo traz, no cabeçalho, o que a consulta devolveu quando foi executada no Excel e o que quebra se o ambiente for outro. Todas usam a pasta <code>C:\SiteTeste\Filiais\</code>: troque pelo seu caminho.</p>
+<ul><li><a href="/modelos/artigo01-juntar-arquivos-da-pasta.m">Juntar os arquivos de uma pasta</a> (artigo 1)</li><li><a href="/modelos/artigo02-caminho-como-parametro.m">O caminho da pasta como parâmetro</a> (artigo 2, duas consultas)</li><li><a href="/modelos/artigo07-funcao-propria.m">Função própria, uma chamada por filial</a> (artigo 7, duas consultas)</li></ul>
+<h2>Onde isso tudo está explicado</h2>
+<p>Os dois erros e a conferência de colunas são o assunto do capítulo 10 de <em>Power Query e Linguagem M</em>, com outros exemplos e exercícios. <a href="/go/livro/">Ver na Amazon</a>.</p>
+<p>Limites: a planilha foi recalculada fora do Excel, em outro programa de planilhas, e os seis resultados bateram com a coluna <code>Esperado</code>; ela não foi aberta no Excel. O comportamento da Tabela crescendo ao digitar uma linha nova é o do Excel e não foi testado nesta versão do arquivo.</p>
+</main>
+<footer>Renan Kessler · <a href="/sobre/">Sobre este site</a></footer>
+</body>
+</html>

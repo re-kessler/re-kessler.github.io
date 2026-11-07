@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Power Query: &quot;DataFormat.Error: Não conseguimos converter em Número&quot; | Excel Sem Enrolação</title>
+<meta name="description" content="Por que a conversão de texto em número falha em algumas células, como achar qual linha tem o valor ruim e como separar as linhas rejeitadas sem perdê-las. Testado no Excel 365.">
+
+<link rel="canonical" href="https://re-kessler.github.io/artigos/power-query-dataformat-error-nao-conseguimos-converter-em-numero/">
+<link rel="alternate" type="application/atom+xml" href="/feed.xml">
+<link rel="stylesheet" href="/estilo.css">
+
+</head>
+<body>
+<header><a class="nome" href="/">Excel Sem Enrolação</a>
+<nav><a href="/">Artigos</a><a href="/livro/">O livro</a><a href="/sobre/">Sobre</a></nav></header>
+<main>
+<h1>Power Query: &quot;DataFormat.Error: Não conseguimos converter em Número&quot;</h1>
+<p class="data">6 de novembro de 2026 · Renan Kessler</p>
+<p>A planilha da filial Oeste tem seis vendas e a coluna <code>Valor</code> foi digitada como texto. A consulta converte a coluna para número e, na prévia, cinco células mostram o valor e uma mostra <code>Error</code>. O erro dessa célula, lido no Excel 365, tem as três partes de qualquer erro do Power Query:</p>
+<pre><code>Reason:  DataFormat.Error
+Message: Não conseguimos converter em Número.
+Detail:  a conferir</code></pre>
+<p><code>DataFormat.Error</code> quer dizer que o formato do dado não é o que a conversão esperava. O detalhe traz o texto que não passou. Aqui é <code>a conferir</code>, uma observação que alguém digitou no lugar do valor da venda do dia 3.</p>
+<h2>O erro é da célula, não da consulta</h2>
+<p>A consulta não para. As outras cinco linhas foram convertidas e aparecem normais, e só a célula ruim carrega o erro. O estrago vem quando alguma etapa usa a coluna inteira. <code>List.Sum(Oeste[Valor])</code> devolveu o mesmo <code>DataFormat.Error</code>, então um total calculado sobre essa coluna vira erro por causa de uma única célula.</p>
+<p>A etapa que gerou tudo isso é a conversão de tipo:</p>
+<pre><code>Tipado = Table.TransformColumnTypes(Origem, {{&quot;Data&quot;, type date}, {&quot;Valor&quot;, type number}})</code></pre>
+<p>Ela converte cada célula de <code>Valor</code> e, onde não consegue, deixa um erro no lugar. Não avisa quantas falharam.</p>
+<h2>Achar a linha ruim</h2>
+<p>O detalhe do erro mostra o texto, mas a prévia já não mostra o texto original: a célula virou <code>Error</code>. O jeito de não perder a pista é guardar o texto antes de converter, numa coluna à parte, e só depois converter:</p>
+<pre><code>let
+    Livro = Excel.Workbook(File.Contents(&quot;C:\Relatorios\Erro\Filial_Oeste.xlsx&quot;), true),
+    Origem = Livro{[Item = &quot;Vendas&quot;, Kind = &quot;Sheet&quot;]}[Data],
+    ComTexto = Table.AddColumn(Origem, &quot;ValorTexto&quot;, each [Valor], type text),
+    Tipado = Table.TransformColumnTypes(
+        ComTexto,
+        {{&quot;Data&quot;, type date}, {&quot;Valor&quot;, type number}},
+        &quot;pt-BR&quot;
+    )
+in
+    Tipado</code></pre>
+<p>Salve esta consulta com o nome <code>Oeste</code>. <code>ValorTexto</code> fica com o texto como chegou, e <code>Valor</code> com o número ou o erro. O terceiro argumento de <code>Table.TransformColumnTypes</code>, <code>&quot;pt-BR&quot;</code>, fixa a cultura da conversão (mais sobre isso adiante).</p>
+<p>Duas consultas novas partem de <code>Oeste</code>. A primeira fica só com as linhas em que <code>Valor</code> converteu:</p>
+<pre><code>let
+    Boas = Table.RemoveRowsWithErrors(Oeste, {&quot;Valor&quot;})
+in
+    Boas</code></pre>
+<p>A segunda fica com as que falharam, e mostra o texto original no lugar do erro:</p>
+<pre><code>let
+    ComErro = Table.SelectRowsWithErrors(Oeste, {&quot;Valor&quot;}),
+    Rejeitadas = Table.SelectColumns(ComErro, {&quot;Data&quot;, &quot;Item&quot;, &quot;ValorTexto&quot;})
+in
+    Rejeitadas</code></pre>
+<p>No teste, <code>Oeste</code> tinha 6 linhas, <code>Oeste_Boas</code> ficou com 5, somando 1.300,30, e <code>Oeste_Rejeitadas</code> ficou com 1: a de 3 de março, <code>Caderno</code>, com <code>a conferir</code> em <code>ValorTexto</code>. Cinco mais uma dá seis, e é essa conta que mostra que nenhuma linha sumiu. Carregue <code>Oeste_Rejeitadas</code> numa planilha ao lado do relatório. Quando ela fica vazia, o mês veio limpo.</p>
+<h2>A cultura pode causar o erro, ou esconder</h2>
+<p>Três das seis células tinham formas diferentes de escrever um valor em reais: <code>8,50</code>, <code>1.249,90</code> e <code>R$ 8,50</code>. Com a cultura <code>&quot;pt-BR&quot;</code>, as três foram convertidas sem reclamar (8,5, 1249,9 e 8,5). A cultura diz ao Power Query qual é o separador decimal e qual é o de milhar.</p>
+<p>Rodei a mesma conversão com <code>&quot;en-US&quot;</code> no lugar, para ver o que uma cultura em inglês faria com esses textos. Troquei só o argumento, não a configuração regional do Windows. O resultado foi outro:</p>
+<table><thead><tr><th>Texto na célula</th><th><code>pt-BR</code></th><th><code>en-US</code></th></tr></thead><tbody><tr><td><code>8,50</code></td><td>8,5</td><td>850</td></tr><tr><td><code>24,90</code></td><td>24,9</td><td>2490</td></tr><tr><td><code>1.249,90</code></td><td>1249,9</td><td><code>DataFormat.Error</code></td></tr><tr><td><code>R$ 8,50</code></td><td>8,5</td><td><code>DataFormat.Error</code></td></tr><tr><td><code>a conferir</code></td><td><code>DataFormat.Error</code></td><td><code>DataFormat.Error</code></td></tr></tbody></table>
+<p>Duas das linhas deram erro, e isso ao menos aparece. As outras duas viraram 850 e 2490 sem aviso nenhum, porque em inglês a vírgula é separador de milhar e o Power Query a aceitou como tal. Um erro se vê na prévia. Um valor cem vezes maior, não. Por isso o <code>&quot;pt-BR&quot;</code> está escrito na consulta: o resultado não depende da máquina em que ela é atualizada.</p>
+<h2>Onde isso quebra</h2>
+<p><code>Table.RemoveRowsWithErrors</code> apaga a linha da conta, e sozinha não deixa rastro. Só vale com a consulta de rejeitadas ao lado. Se ninguém abre a planilha das rejeitadas, o total do mês fica menor que o real e nada avisa.</p>
+<p>A conferência de 5 mais 1 igual a 6 também não roda sozinha. Ela precisa de alguém que olhe as duas tabelas, ou de uma terceira consulta que compare as contagens.</p>
+<p>E as duas funções recebem a lista de colunas a vigiar, aqui só <code>{&quot;Valor&quot;}</code>. A coluna <code>Data</code> também passou por conversão, e um erro nela fica fora dessa lista: quem quiser vigiar as duas escreve <code>{&quot;Data&quot;, &quot;Valor&quot;}</code>, e isso eu não testei com um arquivo que tivesse data ruim.</p>
+<div class="no-livro">No livro: o capítulo 10, «Erros e dados sujos», de <em>Power Query e Linguagem M</em>, trata deste assunto com mais profundidade e com outros exemplos. <a href="/livro/">Ver o livro</a>.</div>
+</main>
+<footer>Renan Kessler · <a href="/sobre/">Sobre este site</a></footer>
+</body>
+</html>

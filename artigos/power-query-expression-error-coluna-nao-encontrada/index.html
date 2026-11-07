@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Power Query: &quot;A coluna da tabela não foi encontrada&quot; (Expression.Error) | Excel Sem Enrolação</title>
+<meta name="description" content="O que a mensagem significa, por que ela não diz qual arquivo falhou e como fazer a consulta parar com um aviso que aponta o arquivo e as colunas que chegaram. Testado no Excel 365.">
+
+<link rel="canonical" href="https://re-kessler.github.io/artigos/power-query-expression-error-coluna-nao-encontrada/">
+<link rel="alternate" type="application/atom+xml" href="/feed.xml">
+<link rel="stylesheet" href="/estilo.css">
+
+</head>
+<body>
+<header><a class="nome" href="/">Excel Sem Enrolação</a>
+<nav><a href="/">Artigos</a><a href="/livro/">O livro</a><a href="/sobre/">Sobre</a></nav></header>
+<main>
+<h1>Power Query: &quot;A coluna da tabela não foi encontrada&quot; (Expression.Error)</h1>
+<p class="data">6 de novembro de 2026 · Renan Kessler</p>
+<p>A planilha da filial Leste chegou com o cabeçalho <code>Valor Total</code> no lugar de <code>Valor</code>. A consulta, que até o mês passado funcionava, parou com esta mensagem:</p>
+<pre><code>Expression.Error: A coluna &#x27;Valor&#x27; da tabela não foi encontrada.</code></pre>
+<p>A mensagem é exatamente a que o Excel 365 devolveu no teste com esse arquivo. Ela tem duas partes. Antes dos dois-pontos vem a categoria, e <code>Expression.Error</code> quer dizer que o erro está no código: uma etapa citou uma coluna que a tabela não tem naquele momento. Depois vem a frase, que dá o nome da coluna que faltou.</p>
+<h2>O que a mensagem não diz</h2>
+<p>Ela não diz qual arquivo veio errado, e também não diz como a coluna se chama agora. Numa consulta que lê uma pasta com vários arquivos, isso obriga a abrir um por um até achar o cabeçalho trocado.</p>
+<p>O erro aparece quando alguém renomeia ou apaga o cabeçalho na origem. Pode aparecer também dentro da própria consulta, se uma etapa removeu ou renomeou a coluna e uma etapa posterior ainda usa o nome antigo. Nos dois casos o código está certo para a tabela que você tinha, e errado para a que chegou.</p>
+<h2>Parar com uma mensagem que aponta o arquivo</h2>
+<p>A consulta abaixo lê a planilha da filial Leste. Logo depois da leitura, uma etapa confere se as colunas esperadas existem. Se alguma faltar, a consulta para com um erro escrito por você:</p>
+<pre><code>let
+    Livro = Excel.Workbook(File.Contents(&quot;C:\Relatorios\Erro\Filial_Leste.xlsx&quot;), true),
+    Origem = Livro{[Item = &quot;Vendas&quot;, Kind = &quot;Sheet&quot;]}[Data],
+    Esperadas = {&quot;Data&quot;, &quot;Item&quot;, &quot;Valor&quot;},
+    Conferido =
+        if Table.HasColumns(Origem, Esperadas)
+        then Origem
+        else error Error.Record(
+            &quot;Coluna ausente&quot;,
+            &quot;Filial_Leste.xlsx não tem todas as colunas esperadas&quot;,
+            &quot;Colunas encontradas: &quot; &amp; Text.Combine(Table.ColumnNames(Origem), &quot;, &quot;)
+        ),
+    Tipado = Table.TransformColumnTypes(Conferido, {{&quot;Data&quot;, type date}, {&quot;Valor&quot;, type number}})
+in
+    Tipado</code></pre>
+<p><code>Table.HasColumns</code> recebe a tabela e a lista <code>Esperadas</code>, e só responde verdadeiro se nenhuma delas faltar. Caso contrário, <code>error Error.Record(...)</code> para tudo com um erro que você mesmo monta, nas três partes de qualquer mensagem do Power Query: categoria, mensagem e detalhe. Com o arquivo da Leste, as três partes que o Excel devolveu no teste foram:</p>
+<pre><code>Reason:  Coluna ausente
+Message: Filial_Leste.xlsx não tem todas as colunas esperadas
+Detail:  Colunas encontradas: Data, Item, Valor Total</code></pre>
+<p>O detalhe lista os nomes que chegaram de fato. Com mensagem e detalhe juntos, o aviso aponta a filial Leste e a coluna <code>Valor Total</code> sem que ninguém precise abrir o arquivo.</p>
+<p>A mesma consulta com um arquivo bom passa pela conferência normalmente. Testei com <code>Filial_Sul.xlsx</code> e as 10 linhas chegaram.</p>
+<h2>Quando o novo nome é definitivo</h2>
+<p>Se a filial mudou o cabeçalho de vez, e todos os arquivos dela daqui em diante virão com <code>Valor Total</code>, a consulta deve aprender o nome novo. <code>Table.RenameColumns</code> aceita um terceiro argumento que faz a etapa ignorar o nome que não existir:</p>
+<pre><code>Renomeado = Table.RenameColumns(Origem, {{&quot;Valor Total&quot;, &quot;Valor&quot;}}, MissingField.Ignore),</code></pre>
+<p>Com <code>MissingField.Ignore</code>, a etapa renomeia quando encontra <code>Valor Total</code> e segue quando não encontra. Testei nos dois arquivos: o da Leste, com <code>Valor Total</code>, e o da Sul, com <code>Valor</code>. Nos dois, <code>Table.HasColumns</code> deu verdadeiro e as 10 linhas chegaram. A etapa entra logo antes de <code>Conferido</code>, e a conferência continua valendo para o que sobrar de errado.</p>
+<h2>Onde isso quebra</h2>
+<p><code>Table.HasColumns</code> confere nomes e nada mais. Uma coluna <code>Valor</code> cheia de texto passa pela conferência e falha na etapa seguinte com outro erro, o <code>DataFormat.Error</code>, que aparece só nas células ruins. Esse caso pede um tratamento diferente, porque não deve parar a consulta inteira.</p>
+<p>E a lista <code>Esperadas</code> fica parada no código. Se um dia a planilha ganhar uma coluna que a consulta precisa, ela tem de entrar nessa lista, senão a conferência continua dando verdadeiro para um arquivo que já não serve.</p>
+<div class="no-livro">No livro: o capítulo 10, «Erros e dados sujos», de <em>Power Query e Linguagem M</em>, trata deste assunto com mais profundidade e com outros exemplos. <a href="/livro/">Ver o livro</a>.</div>
+</main>
+<footer>Renan Kessler · <a href="/sobre/">Sobre este site</a></footer>
+</body>
+</html>
