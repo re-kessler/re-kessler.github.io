@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Como juntar vários arquivos do Excel de uma pasta no Power Query | Excel Sem Enrolação</title>
+<meta name="description" content="Uma consulta que lê todos os .xlsx de uma pasta e empilha as planilhas numa tabela só, com o nome do arquivo em cada linha. Código M testado no Excel 365.">
+
+<link rel="canonical" href="https://re-kessler.github.io/artigos/juntar-arquivos-excel-pasta-power-query/">
+<link rel="alternate" type="application/atom+xml" href="/feed.xml">
+<link rel="stylesheet" href="/estilo.css">
+
+</head>
+<body>
+<header><a class="nome" href="/">Excel Sem Enrolação</a>
+<nav><a href="/">Artigos</a><a href="/livro/">O livro</a><a href="/sobre/">Sobre</a></nav></header>
+<main>
+<h1>Como juntar vários arquivos do Excel de uma pasta no Power Query</h1>
+<p class="data">13 de novembro de 2026 · Renan Kessler</p>
+<p>Três filiais mandam uma planilha de vendas por mês. Cada arquivo tem uma aba chamada <code>Vendas</code> com as mesmas colunas: <code>Data</code>, <code>Item</code> e <code>Valor</code>. Você guarda os arquivos numa pasta só e quer uma tabela que junte tudo e continue certa quando chegar o arquivo do mês seguinte.</p>
+<p>O Power Query faz isso com uma consulta que lista a pasta, abre cada arquivo e empilha o conteúdo. O código abaixo foi executado no Excel 365 com três filiais de teste (30 linhas no total).</p>
+<h2>A consulta completa</h2>
+<p>Crie uma consulta em branco (Dados → Obter Dados → De Outras Fontes → Consulta em Branco), abra Página Inicial → Editor Avançado e cole:</p>
+<pre><code>let
+    Pasta = &quot;C:\Relatorios\Filiais\&quot;,
+    Arquivos = Folder.Files(Pasta),
+    DaPasta = Table.SelectRows(Arquivos, each [Folder Path] = Pasta),
+    SoExcel = Table.SelectRows(
+        DaPasta,
+        each Text.Lower([Extension]) = &quot;.xlsx&quot; and not Text.StartsWith([Name], &quot;~$&quot;)
+    ),
+    Lidos = Table.AddColumn(
+        SoExcel,
+        &quot;Dados&quot;,
+        each Excel.Workbook([Content], true){[Item = &quot;Vendas&quot;, Kind = &quot;Sheet&quot;]}[Data]
+    ),
+    Mantidas = Table.SelectColumns(Lidos, {&quot;Name&quot;, &quot;Dados&quot;}),
+    Expandido = Table.ExpandTableColumn(Mantidas, &quot;Dados&quot;, {&quot;Data&quot;, &quot;Item&quot;, &quot;Valor&quot;}),
+    Tipado = Table.TransformColumnTypes(Expandido, {{&quot;Data&quot;, type date}, {&quot;Valor&quot;, type number}})
+in
+    Tipado</code></pre>
+<p>Troque o caminho da primeira linha pelo da sua pasta e termine-o com uma barra invertida (o motivo está no fim do artigo). O resultado é uma tabela com quatro colunas: <code>Name</code> (o arquivo de origem), <code>Data</code>, <code>Item</code> e <code>Valor</code>. A coluna <code>Name</code> não custa nada e ajuda muito. Quando um total parecer estranho, ela mostra de qual filial veio cada linha.</p>
+<h2>O que cada etapa faz</h2>
+<p><code>Folder.Files</code> lista a pasta, e cada linha da tabela que ela devolve é um arquivo. O artigo usa quatro colunas: <code>Name</code>, <code>Extension</code>, <code>Folder Path</code> e <code>Content</code>, que carrega o arquivo inteiro como valor binário.</p>
+<p><code>Excel.Workbook</code> recebe esse binário e devolve uma tabela com o que existe dentro da pasta de trabalho: abas, tabelas e intervalos nomeados. O segundo argumento, <code>true</code>, promove a primeira linha de cada aba a cabeçalho. A chave <code>{[Item = &quot;Vendas&quot;, Kind = &quot;Sheet&quot;]}</code> escolhe a aba pelo nome, e <code>[Data]</code> pega o conteúdo dela. Por isso <code>Table.AddColumn</code> cria uma coluna em que cada célula já contém uma tabela inteira.</p>
+<p><code>Table.ExpandTableColumn</code> abre essa coluna e empilha as tabelas, repetindo o nome do arquivo em cada linha. É o passo que faz o trabalho de juntar.</p>
+<h2>As duas linhas que parecem sobrar</h2>
+<p><code>DaPasta</code> e o teste de <code>~$</code> existem porque, na pasta de teste, a lista de arquivos tinha cinco itens e só três eram filiais.</p>
+<p>O primeiro intruso é um arquivo de trava. Quando alguém está com <code>Filial_Sul.xlsx</code> aberto, o Excel cria ao lado dele um <code>~$Filial_Sul.xlsx</code>. Esse arquivo não é uma planilha. Sem o filtro, <code>Excel.Workbook</code> tenta abri-lo e a atualização falha com <code>DataFormat.Error</code>: "Não foi possível carregar esse arquivo do Excel porque não conseguimos entender seu formato." No teste usei um arquivo de 165 bytes com esse nome, sem abrir o Excel de verdade. O erro é o de qualquer arquivo que não seja uma planilha.</p>
+<p>O segundo intruso é uma subpasta. <code>Folder.Files</code> lista também os arquivos das subpastas, segundo a documentação da Microsoft. Quem guarda uma cópia antiga em <code>Filiais\Antigos\Filial_Norte.xlsx</code> passa a ter o mesmo nome duas vezes na lista. Sem <code>DaPasta</code>, a tabela do teste saiu com 40 linhas em vez de 30, e a filial Norte apareceu em dobro, sem nenhum aviso. O filtro compara <code>Folder Path</code> com a pasta pedida e deixa de fora tudo o que estiver mais fundo.</p>
+<h2>Onde isso quebra</h2>
+<p>A barra invertida do fim do caminho não é enfeite. <code>Folder.Files</code> aceita a pasta sem ela, mas <code>Folder Path</code> sempre vem com a barra. Com <code>Pasta = &quot;C:\Relatorios\Filiais&quot;</code>, a comparação de <code>DaPasta</code> não bate com nenhuma linha. A tabela final sai vazia, sem mensagem de erro.</p>
+<p>A consulta também assume que toda planilha tem uma aba <code>Vendas</code> e as três colunas. Uma filial que renomeie a aba para <code>Janeiro</code> derruba a atualização com <code>Expression.Error: A chave não correspondia a nenhuma linha na tabela.</code> A mensagem não cita o arquivo nem a aba, e você só descobre qual foi olhando a coluna <code>Name</code> da lista. Se ela renomear uma coluna, o erro é outro, e o artigo sobre "a coluna da tabela não foi encontrada" mostra como fazer a consulta dizer qual arquivo falhou.</p>
+<p>O filtro de extensão deixa de fora <code>.xlsm</code> e <code>.xls</code>. Se a sua pasta mistura formatos, acrescente a extensão à condição da etapa <code>SoExcel</code> e confira que o arquivo novo abre com <code>Excel.Workbook</code> antes de confiar no total.</p>
+<div class="no-livro">No livro: o capítulo 12, «Estudo de caso fim a fim», de <em>Power Query e Linguagem M</em>, trata deste assunto com mais profundidade e com outros exemplos. <a href="/livro/">Ver o livro</a>.</div>
+</main>
+<footer>Renan Kessler · <a href="/sobre/">Sobre este site</a></footer>
+</body>
+</html>

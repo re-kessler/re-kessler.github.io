@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Power Query: o caminho da pasta mudou e a consulta quebrou | Excel Sem Enrolação</title>
+<meta name="description" content="Como tirar o caminho da pasta de dentro do código e guardá-lo num parâmetro, para trocar o endereço em um campo só. Testado no Excel 365.">
+
+<link rel="canonical" href="https://re-kessler.github.io/artigos/power-query-caminho-da-pasta-mudou-parametro/">
+<link rel="alternate" type="application/atom+xml" href="/feed.xml">
+<link rel="stylesheet" href="/estilo.css">
+
+</head>
+<body>
+<header><a class="nome" href="/">Excel Sem Enrolação</a>
+<nav><a href="/">Artigos</a><a href="/livro/">O livro</a><a href="/sobre/">Sobre</a></nav></header>
+<main>
+<h1>Power Query: o caminho da pasta mudou e a consulta quebrou</h1>
+<p class="data">13 de novembro de 2026 · Renan Kessler</p>
+<p>O relatório funcionava até alguém mover a pasta dos arquivos para outro disco. No primeiro Atualizar, a consulta parou com esta mensagem:</p>
+<pre><code>DataSource.NotFound: File or Folder: Não conseguimos encontrar a pasta &#x27;C:\SiteTeste\FiliaisNovo\*&#x27;.</code></pre>
+<p>O texto é exatamente o que o Excel 365 devolveu no teste, apontando para uma pasta que não existe. O <code>*</code> no fim faz parte da mensagem. O Power Query monta esse padrão para listar o conteúdo da pasta, e ele aparece mesmo quando o caminho que você digitou não tem asterisco.</p>
+<p>A correção óbvia é abrir o Editor Avançado e trocar o caminho no código. Funciona uma vez. O problema é que o caminho está escrito dentro de cada consulta que lê aquela pasta, e com três consultas são três edições, cada uma com a chance de uma aspa errada.</p>
+<h2>Guardar o caminho num parâmetro</h2>
+<p>Dentro do Editor do Power Query, abra Gerenciar Parâmetros na Página Inicial e escolha Novo Parâmetro. Dê o nome <code>CaminhoPasta</code>, marque o tipo Texto e escreva o endereço da pasta no campo Valor Atual, terminando com a barra invertida. Para os outros campos, valem as sugestões da própria janela.</p>
+<p>Na lista de consultas, à esquerda, o parâmetro ganha um ícone diferente. O código dele cabe em uma linha. Esta é a que usei no teste:</p>
+<pre><code>&quot;C:\Relatorios\Filiais\&quot; meta [IsParameterQuery = true, Type = &quot;Text&quot;, IsParameterQueryRequired = true]</code></pre>
+<p>Quem vale é o texto entre aspas. A parte depois de <code>meta</code> é metadado, que o Editor lê para exibir a consulta como parâmetro. Para o resto do código, <code>CaminhoPasta</code> é só um nome que devolve esse texto, e pode entrar em qualquer lugar onde hoje há um endereço digitado.</p>
+<h2>Usar o parâmetro na consulta</h2>
+<p>Numa consulta que lista os arquivos da pasta, o texto fixo sai e o nome do parâmetro entra:</p>
+<pre><code>let
+    Arquivos = Folder.Files(CaminhoPasta),
+    SoExcel = Table.SelectRows(Arquivos, each Text.Lower([Extension]) = &quot;.xlsx&quot;),
+    Nomes = Table.SelectColumns(SoExcel, {&quot;Name&quot;, &quot;Folder Path&quot;})
+in
+    Nomes</code></pre>
+<p>A consulta acima foi carregada numa planilha de teste e listou os arquivos da pasta pelo parâmetro. Outras consultas, como a que abre cada planilha, usam <code>CaminhoPasta</code> do mesmo jeito. O endereço passa a existir num lugar só.</p>
+<h2>Quando a pasta mudar</h2>
+<p>Abra o Editor, clique em <code>CaminhoPasta</code> no painel de consultas e troque o Valor Atual pelo endereço novo. Depois use Fechar e Carregar, ou Dados → Atualizar Tudo na planilha. Nenhuma linha de código muda, e quem cuida do relatório não precisa entender M para fazer isso.</p>
+<p>A barra do fim merece uma nota. Com o parâmetro valendo <code>C:\SiteTeste\Filiais</code>, sem barra, <code>Folder.Files</code> listou os mesmos arquivos. A barra passa a ser obrigatória quando uma etapa cola o caminho a um nome de arquivo, como <code>CaminhoPasta &amp; &quot;Filial_Sul.xlsx&quot;</code>. O resultado, <code>C:\SiteTeste\FiliaisFilial_Sul.xlsx</code>, aponta para um arquivo que não existe. Escrever o valor sempre com a barra cobre os dois usos.</p>
+<h2>Onde isso quebra</h2>
+<p>O parâmetro guarda o texto que você digitou e não confere nada. Uma letra trocada em <code>C:\Relatorios\Filias\</code> só aparece no momento da atualização, com a mesma mensagem <code>DataSource.NotFound</code> do início do artigo.</p>
+<p>Essa mensagem tem uma serventia. O caminho que ela mostra, com o <code>*</code> no fim, é o que o Power Query tentou abrir de fato. Compare letra por letra com a pasta no Explorador de Arquivos antes de mexer em qualquer código.</p>
+<p>O valor do parâmetro fica salvo dentro do arquivo do Excel. Um colega que receba o relatório e tenha os arquivos em outro disco continuará apontando para o seu endereço até trocar o parâmetro na máquina dele.</p>
+<div class="no-livro">No livro: o capítulo 6, «Parâmetros e consultas dinâmicas», de <em>Power Query e Linguagem M</em>, trata deste assunto com mais profundidade e com outros exemplos. <a href="/livro/">Ver o livro</a>.</div>
+</main>
+<footer>Renan Kessler · <a href="/sobre/">Sobre este site</a></footer>
+</body>
+</html>
